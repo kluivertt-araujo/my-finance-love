@@ -19,8 +19,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Account } from "@/hooks/useAccounts";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useTransfers } from "@/hooks/useTransfers";
+import { useAccountContributions } from "@/hooks/useGoals";
 import { usePreferences } from "@/contexts/PreferencesContext";
-import { TrendingUp, TrendingDown, ArrowLeftRight, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowLeftRight, Minus, Target } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 
@@ -30,21 +31,23 @@ interface AccountStatementDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type FilterType = "all" | "income" | "expense" | "transfer";
+type FilterType = "all" | "income" | "expense" | "transfer" | "contribution";
 
 interface StatementEntry {
   id: string;
   date: string;
   description: string;
-  type: "income" | "expense" | "transfer_in" | "transfer_out";
+  type: "income" | "expense" | "transfer_in" | "transfer_out" | "contribution";
   amount: number;
   category?: string;
+  goalName?: string;
 }
 
 export function AccountStatementDialog({ account, open, onOpenChange }: AccountStatementDialogProps) {
   const { language, formatCurrency } = usePreferences();
   const { data: transactions } = useTransactions();
   const { data: transfers } = useTransfers();
+  const { data: contributions } = useAccountContributions(account.id);
 
   const today = new Date();
   const [startDate, setStartDate] = useState(format(startOfMonth(today), "yyyy-MM-dd"));
@@ -90,6 +93,20 @@ export function AccountStatementDialog({ account, open, onOpenChange }: AccountS
       }
     });
 
+    // Add goal contributions from this account
+    contributions?.forEach((c) => {
+      result.push({
+        id: `contribution-${c.id}`,
+        date: c.date,
+        description: language === "en" 
+          ? `Goal contribution: ${c.goal?.name || "Goal"}` 
+          : `Aporte para Meta: ${c.goal?.name || "Meta"}`,
+        type: "contribution",
+        amount: c.amount,
+        goalName: c.goal?.name,
+      });
+    });
+
     // Filter by date
     const filtered = result.filter((entry) => {
       const entryDate = new Date(entry.date);
@@ -104,12 +121,13 @@ export function AccountStatementDialog({ account, open, onOpenChange }: AccountS
       if (filterType === "income") return entry.type === "income";
       if (filterType === "expense") return entry.type === "expense";
       if (filterType === "transfer") return entry.type === "transfer_in" || entry.type === "transfer_out";
+      if (filterType === "contribution") return entry.type === "contribution";
       return true;
     });
 
     // Sort by date descending
     return typeFiltered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, transfers, account.id, startDate, endDate, filterType]);
+  }, [transactions, transfers, contributions, account.id, startDate, endDate, filterType, language]);
 
   const summary = useMemo(() => {
     let credits = 0;
@@ -135,6 +153,8 @@ export function AccountStatementDialog({ account, open, onOpenChange }: AccountS
       case "transfer_in":
       case "transfer_out":
         return <ArrowLeftRight className="w-4 h-4 text-secondary" />;
+      case "contribution":
+        return <Target className="w-4 h-4 text-primary" />;
     }
   };
 
@@ -145,6 +165,7 @@ export function AccountStatementDialog({ account, open, onOpenChange }: AccountS
         return "text-income";
       case "expense":
       case "transfer_out":
+      case "contribution":
         return "text-expense";
     }
   };
@@ -191,6 +212,7 @@ export function AccountStatementDialog({ account, open, onOpenChange }: AccountS
                 <SelectItem value="income">{language === "en" ? "Income" : "Receitas"}</SelectItem>
                 <SelectItem value="expense">{language === "en" ? "Expense" : "Despesas"}</SelectItem>
                 <SelectItem value="transfer">{language === "en" ? "Transfers" : "Transferências"}</SelectItem>
+                <SelectItem value="contribution">{language === "en" ? "Goal Contributions" : "Aportes p/ Metas"}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -240,6 +262,11 @@ export function AccountStatementDialog({ account, open, onOpenChange }: AccountS
                               {entry.category}
                             </Badge>
                           </>
+                        )}
+                        {entry.type === "contribution" && (
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+                            {language === "en" ? "Goal" : "Meta"}
+                          </Badge>
                         )}
                       </div>
                     </div>

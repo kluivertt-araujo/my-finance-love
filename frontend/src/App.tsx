@@ -12,6 +12,7 @@ import Incomes from "./pages/Incomes";
 import Expenses from "./pages/Expenses";
 import Transfers from "./pages/Transfers";
 import Accounts from "./pages/Accounts";
+import Goals from "./pages/Goals";
 import Categories from "./pages/Categories";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/expenses" element={<Expenses />} />
               <Route path="/transfers" element={<Transfers />} />
               <Route path="/accounts" element={<Accounts />} />
+              <Route path="/goals" element={<Goals />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />

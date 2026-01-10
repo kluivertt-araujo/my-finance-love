@@ -2,7 +2,6 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Search,
-  Filter,
   TrendingDown,
   MoreHorizontal,
   Pencil,
@@ -32,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TransactionDialog } from "@/components/dialogs/TransactionDialog";
 import { EditTransactionDialog } from "@/components/dialogs/EditTransactionDialog";
+import { TransactionFilters, TransactionFilterValues } from "@/components/filters/TransactionFilters";
 import { useTransactions, useDeleteTransaction, Transaction } from "@/hooks/useTransactions";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
@@ -53,18 +53,72 @@ const paymentMethodLabels: Record<string, { pt: string; en: string }> = {
 
 export default function Expenses() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [filters, setFilters] = useState<TransactionFilterValues>({});
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const { data: transactions, isLoading } = useTransactions("expense");
   const deleteTransaction = useDeleteTransaction();
   const { t, language, formatCurrency } = usePreferences();
 
   const expenses = transactions || [];
-  const filteredExpenses = expenses.filter((expense) =>
-    expense.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  
+  // Apply all filters
+  const filteredExpenses = expenses.filter((expense) => {
+    // Search filter
+    if (searchTerm && !expense.description?.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
+    }
+    
+    // Category filter
+    if (filters.categoryId && expense.category_id !== filters.categoryId) {
+      return false;
+    }
+    
+    // Payment method filter
+    if (filters.paymentMethod && expense.payment_method !== filters.paymentMethod) {
+      return false;
+    }
+    
+    // Recurrence filter
+    if (filters.recurrence) {
+      const expenseRecurrence = expense.recurrence || "none";
+      if (expenseRecurrence !== filters.recurrence) {
+        return false;
+      }
+    }
+    
+    // Date range filter
+    if (filters.dateStart) {
+      const expenseDate = new Date(expense.date);
+      if (expenseDate < filters.dateStart) {
+        return false;
+      }
+    }
+    
+    if (filters.dateEnd) {
+      const expenseDate = new Date(expense.date);
+      const endDate = new Date(filters.dateEnd);
+      endDate.setHours(23, 59, 59, 999);
+      if (expenseDate > endDate) {
+        return false;
+      }
+    }
+    
+    // Min amount filter
+    if (filters.minAmount !== undefined && expense.amount < filters.minAmount) {
+      return false;
+    }
+    
+    // Max amount filter
+    if (filters.maxAmount !== undefined && expense.amount > filters.maxAmount) {
+      return false;
+    }
+    
+    return true;
+  });
 
-  const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const recurringExpenseCount = expenses.filter(
+  // Calculate totals based on filtered results
+  const totalExpense = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const recurringExpenseCount = filteredExpenses.filter(
     (e) => e.recurrence && e.recurrence !== "none"
   ).length;
 
@@ -120,7 +174,7 @@ export default function Expenses() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    {language === "en" ? "Total This Month" : "Total do Mês"}
+                    {language === "en" ? "Total (Filtered)" : "Total (Filtrado)"}
                   </p>
                   <p className="text-2xl font-display font-bold text-foreground">
                     {formatCurrency(totalExpense)}
@@ -171,7 +225,7 @@ export default function Expenses() {
                     {language === "en" ? "Transactions" : "Transações"}
                   </p>
                   <p className="text-2xl font-display font-bold text-foreground">
-                    {expenses.length}
+                    {filteredExpenses.length}
                   </p>
                 </div>
               </div>
@@ -196,10 +250,11 @@ export default function Expenses() {
             className="pl-10"
           />
         </div>
-        <Button variant="outline" className="gap-2">
-          <Filter className="w-4 h-4" />
-          {t("filter")}
-        </Button>
+        <TransactionFilters
+          type="expense"
+          filters={filters}
+          onFiltersChange={setFilters}
+        />
       </motion.div>
 
       {/* Expenses Table */}

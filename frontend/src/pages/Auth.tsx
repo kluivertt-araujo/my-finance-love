@@ -169,7 +169,7 @@ export default function Auth() {
             <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
               <Wallet className="w-7 h-7 text-primary-foreground" />
             </div>
-            <span className="text-3xl font-bold text-gradient">FinanceFlow</span>
+            <span className="text-3xl font-bold text-gradient">My Finance</span>
           </motion.div>
           <p className="text-muted-foreground">
             {isLogin ? "Entre na sua conta" : "Crie sua conta gratuita"}

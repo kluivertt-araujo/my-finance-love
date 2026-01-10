@@ -2,7 +2,6 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Search,
-  Filter,
   ArrowLeftRight,
   MoreHorizontal,
   Pencil,
@@ -21,25 +20,78 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { TransferDialog } from "@/components/dialogs/TransferDialog";
 import { EditTransferDialog } from "@/components/dialogs/EditTransferDialog";
+import { TransferFilters, TransferFilterValues } from "@/components/filters/TransferFilters";
 import { useTransfers, useDeleteTransfer, Transfer } from "@/hooks/useTransfers";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
 export default function Transfers() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [filters, setFilters] = useState<TransferFilterValues>({});
   const [editingTransfer, setEditingTransfer] = useState<Transfer | null>(null);
   const { data: transfers, isLoading } = useTransfers();
   const deleteTransfer = useDeleteTransfer();
   const { t, language, formatCurrency } = usePreferences();
 
   const transfersList = transfers || [];
-  const filteredTransfers = transfersList.filter(
-    (t) =>
-      (t.from_account as any)?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (t.to_account as any)?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  
+  // Apply all filters
+  const filteredTransfers = transfersList.filter((transfer) => {
+    // Search filter
+    const fromAccountName = (transfer.from_account as any)?.name?.toLowerCase() || "";
+    const toAccountName = (transfer.to_account as any)?.name?.toLowerCase() || "";
+    const description = transfer.description?.toLowerCase() || "";
+    
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      if (!fromAccountName.includes(searchLower) && 
+          !toAccountName.includes(searchLower) && 
+          !description.includes(searchLower)) {
+        return false;
+      }
+    }
+    
+    // Date range filter
+    if (filters.dateStart) {
+      const transferDate = new Date(transfer.date);
+      if (transferDate < filters.dateStart) {
+        return false;
+      }
+    }
+    
+    if (filters.dateEnd) {
+      const transferDate = new Date(transfer.date);
+      const endDate = new Date(filters.dateEnd);
+      endDate.setHours(23, 59, 59, 999);
+      if (transferDate > endDate) {
+        return false;
+      }
+    }
+    
+    // From account filter
+    if (filters.fromAccountId && transfer.from_account_id !== filters.fromAccountId) {
+      return false;
+    }
+    
+    // To account filter
+    if (filters.toAccountId && transfer.to_account_id !== filters.toAccountId) {
+      return false;
+    }
+    
+    // Min amount filter
+    if (filters.minAmount !== undefined && transfer.amount < filters.minAmount) {
+      return false;
+    }
+    
+    // Max amount filter
+    if (filters.maxAmount !== undefined && transfer.amount > filters.maxAmount) {
+      return false;
+    }
+    
+    return true;
+  });
 
-  const totalTransferred = transfersList.reduce((sum, t) => sum + t.amount, 0);
+  // Calculate total based on filtered results
+  const totalTransferred = filteredTransfers.reduce((sum, t) => sum + t.amount, 0);
 
   if (isLoading) {
     return (
@@ -90,13 +142,13 @@ export default function Transfers() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">
-                  {language === "en" ? "Total Transferred (Month)" : "Total Transferido (Mês)"}
+                  {language === "en" ? "Total Transferred (Filtered)" : "Total Transferido (Filtrado)"}
                 </p>
                 <p className="text-2xl font-display font-bold text-foreground">
                   {formatCurrency(totalTransferred)}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {transfersList.length} {language === "en" ? "transfers made" : "transferências realizadas"}
+                  {filteredTransfers.length} {language === "en" ? "transfers" : "transferências"}
                 </p>
               </div>
             </div>
@@ -120,10 +172,10 @@ export default function Transfers() {
             className="pl-10"
           />
         </div>
-        <Button variant="outline" className="gap-2">
-          <Filter className="w-4 h-4" />
-          {t("filter")}
-        </Button>
+        <TransferFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+        />
       </motion.div>
 
       {/* Transfers List */}

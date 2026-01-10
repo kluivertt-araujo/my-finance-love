@@ -2,7 +2,6 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Search,
-  Filter,
   TrendingUp,
   MoreHorizontal,
   Pencil,
@@ -31,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TransactionDialog } from "@/components/dialogs/TransactionDialog";
 import { EditTransactionDialog } from "@/components/dialogs/EditTransactionDialog";
+import { TransactionFilters, TransactionFilterValues } from "@/components/filters/TransactionFilters";
 import { useTransactions, useDeleteTransaction, Transaction } from "@/hooks/useTransactions";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
@@ -44,18 +44,55 @@ const recurrenceLabels: Record<string, { pt: string; en: string }> = {
 
 export default function Incomes() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [filters, setFilters] = useState<TransactionFilterValues>({});
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const { data: transactions, isLoading } = useTransactions("income");
   const deleteTransaction = useDeleteTransaction();
   const { t, language, formatCurrency } = usePreferences();
 
   const incomes = transactions || [];
-  const filteredIncomes = incomes.filter((income) =>
-    income.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  
+  // Apply all filters
+  const filteredIncomes = incomes.filter((income) => {
+    // Search filter
+    if (searchTerm && !income.description?.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
+    }
+    
+    // Category filter
+    if (filters.categoryId && income.category_id !== filters.categoryId) {
+      return false;
+    }
+    
+    // Account filter
+    if (filters.accountId && income.account_id !== filters.accountId) {
+      return false;
+    }
+    
+    // Recurrence filter
+    if (filters.recurrence) {
+      const incomeRecurrence = income.recurrence || "none";
+      if (incomeRecurrence !== filters.recurrence) {
+        return false;
+      }
+    }
+    
+    // Min amount filter
+    if (filters.minAmount !== undefined && income.amount < filters.minAmount) {
+      return false;
+    }
+    
+    // Max amount filter
+    if (filters.maxAmount !== undefined && income.amount > filters.maxAmount) {
+      return false;
+    }
+    
+    return true;
+  });
 
-  const totalIncome = incomes.reduce((sum, i) => sum + i.amount, 0);
-  const recurringCount = incomes.filter((i) => i.recurrence && i.recurrence !== "none").length;
+  // Calculate totals based on filtered results
+  const totalIncome = filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
+  const recurringCount = filteredIncomes.filter((i) => i.recurrence && i.recurrence !== "none").length;
 
   if (isLoading) {
     return (
@@ -107,7 +144,7 @@ export default function Incomes() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    {language === "en" ? "Total This Month" : "Total do Mês"}
+                    {language === "en" ? "Total (Filtered)" : "Total (Filtrado)"}
                   </p>
                   <p className="text-2xl font-display font-bold text-foreground">
                     {formatCurrency(totalIncome)}
@@ -157,7 +194,7 @@ export default function Incomes() {
                   <p className="text-sm text-muted-foreground">
                     {language === "en" ? "Transactions" : "Transações"}
                   </p>
-                  <p className="text-2xl font-display font-bold text-foreground">{incomes.length}</p>
+                  <p className="text-2xl font-display font-bold text-foreground">{filteredIncomes.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -181,10 +218,11 @@ export default function Incomes() {
             className="pl-10"
           />
         </div>
-        <Button variant="outline" className="gap-2">
-          <Filter className="w-4 h-4" />
-          {t("filter")}
-        </Button>
+        <TransactionFilters
+          type="income"
+          filters={filters}
+          onFiltersChange={setFilters}
+        />
       </motion.div>
 
       {/* Incomes Table */}

@@ -9,6 +9,7 @@ import {
   Download,
   Upload,
   LogOut,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,15 +24,68 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 export default function Settings() {
   const { profile, isLoading, updateProfile, isUpdating, t, language } = usePreferences();
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
   
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState<string>("pt");
+  
+  // Password state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  
+  // Password strength calculation
+  const getPasswordStrength = (password: string): { level: "weak" | "medium" | "strong"; color: string } => {
+    if (!password) return { level: "weak", color: "bg-muted" };
+    
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSymbols = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+    const length = password.length;
+    
+    // Strong: >10 chars + uppercase + numbers + symbols
+    if (length > 10 && hasUppercase && hasNumbers && hasSymbols) {
+      return { level: "strong", color: "bg-income" };
+    }
+    
+    // Medium: 6-10 chars + letters + numbers
+    if (length >= 6 && (hasUppercase || hasLowercase) && hasNumbers) {
+      return { level: "medium", color: "bg-warning" };
+    }
+    
+    // Weak: <6 chars or only letters/lowercase
+    return { level: "weak", color: "bg-destructive" };
+  };
+  
+  const passwordStrength = getPasswordStrength(newPassword);
+  
+  // Delete account state
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -55,6 +109,90 @@ export default function Settings() {
       await updateProfile({ language: value });
     } catch (error) {
       console.error("Error updating language:", error);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError("");
+    
+    // Validate fields
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError(t("fillAllPasswordFields"));
+      return;
+    }
+    
+    // Validate passwords match
+    if (newPassword !== confirmPassword) {
+      setPasswordError(t("passwordsDoNotMatch"));
+      return;
+    }
+    
+    setIsChangingPassword(true);
+    
+    try {
+      // First verify current password by re-authenticating
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: currentPassword,
+      });
+      
+      if (signInError) {
+        setPasswordError(language === "pt" ? "Senha atual incorreta" : "Current password is incorrect");
+        setIsChangingPassword(false);
+        return;
+      }
+      
+      // Update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      
+      if (updateError) {
+        toast.error(t("passwordChangeError"));
+        setIsChangingPassword(false);
+        return;
+      }
+      
+      toast.success(t("passwordChanged"));
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      console.error("Error changing password:", error);
+      toast.error(t("passwordChangeError"));
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    
+    try {
+      // Delete user data first (the database will cascade delete related data)
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Delete profile (this will cascade to other user data due to RLS)
+        await supabase.from("profiles").delete().eq("user_id", user.id);
+        await supabase.from("accounts").delete().eq("user_id", user.id);
+        await supabase.from("categories").delete().eq("user_id", user.id);
+        await supabase.from("transactions").delete().eq("user_id", user.id);
+        await supabase.from("transfers").delete().eq("user_id", user.id);
+        await supabase.from("financial_goals").delete().eq("user_id", user.id);
+        await supabase.from("goal_contributions").delete().eq("user_id", user.id);
+      }
+      
+      // Sign out the user
+      await signOut();
+      
+      toast.success(t("accountDeleted"));
+      navigate("/auth");
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      toast.error(t("accountDeleteError"));
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -148,20 +286,66 @@ export default function Settings() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="current-password">{t("currentPassword")}</Label>
-                <Input id="current-password" type="password" />
+                <Input 
+                  id="current-password" 
+                  type="password" 
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-password">{t("newPassword")}</Label>
-                  <Input id="new-password" type="password" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">{t("confirmPassword")}</Label>
-                  <Input id="confirm-password" type="password" />
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-password">{t("newPassword")}</Label>
+                <Input 
+                  id="new-password" 
+                  type="password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+                {newPassword && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{t("passwordStrength")}:</span>
+                      <span className={`text-xs font-medium ${
+                        passwordStrength.level === "strong" ? "text-income" :
+                        passwordStrength.level === "medium" ? "text-warning" : "text-destructive"
+                      }`}>
+                        {t(passwordStrength.level)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${passwordStrength.color}`}
+                        style={{ 
+                          width: passwordStrength.level === "strong" ? "100%" : 
+                                 passwordStrength.level === "medium" ? "66%" : "33%" 
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">{t("confirmPassword")}</Label>
+                <Input 
+                  id="confirm-password" 
+                  type="password" 
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className={confirmPassword && confirmPassword !== newPassword ? "border-destructive" : ""}
+                />
+                {confirmPassword && confirmPassword !== newPassword && (
+                  <p className="text-xs text-destructive">{t("passwordsDoNotMatch")}</p>
+                )}
               </div>
             </div>
-            <Button>{t("changePassword")}</Button>
+              {passwordError && (
+                <p className="text-sm text-destructive">{passwordError}</p>
+              )}
+            </div>
+            <Button onClick={handleChangePassword} disabled={isChangingPassword}>
+              {isChangingPassword ? t("changingPassword") : t("changePassword")}
+            </Button>
           </CardContent>
         </Card>
       </motion.div>
@@ -306,13 +490,43 @@ export default function Settings() {
             <CardDescription>{t("irreversibleActions")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button variant="outline" className="gap-2 text-destructive border-destructive/50 hover:bg-destructive/10">
+            <Button 
+              variant="outline" 
+              className="gap-2 text-destructive border-destructive/50 hover:bg-destructive/10"
+              onClick={async () => {
+                await signOut();
+                navigate("/auth");
+              }}
+            >
               <LogOut className="w-4 h-4" />
               {t("logoutAllDevices")}
             </Button>
-            <Button variant="destructive" className="gap-2">
-              {t("deleteAccount")}
-            </Button>
+            
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="gap-2" disabled={isDeletingAccount}>
+                  <Trash2 className="w-4 h-4" />
+                  {isDeletingAccount ? t("deletingAccount") : t("deleteAccount")}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t("deleteAccountConfirmTitle")}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("deleteAccountConfirmMessage")}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDeleteAccount}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {t("confirm")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardContent>
         </Card>
       </motion.div>

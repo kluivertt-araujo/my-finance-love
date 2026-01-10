@@ -15,6 +15,7 @@ import {
   LogOut,
   Moon,
   Sun,
+  Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
   { icon: TrendingDown, labelKey: "expenses", path: "/expenses" },
   { icon: ArrowLeftRight, labelKey: "transfers", path: "/transfers" },
   { icon: Wallet, labelKey: "accounts", path: "/accounts" },
+  { icon: Target, labelKey: "goals", path: "/goals" },
   { icon: Tags, labelKey: "categories", path: "/categories" },
   { icon: FileText, labelKey: "reports", path: "/reports" },
   { icon: Settings, labelKey: "settings", path: "/settings" },
